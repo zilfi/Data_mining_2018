@@ -1,0 +1,148 @@
+---
+title: "Chaid_DT_for_sample"
+author: "LZ"
+date: "October 30, 2018"
+output: html_document
+---
+
+```{r setup}
+
+library(dplyr)#for select_if
+
+library(tidyr)#for rsample
+library(broom)#for rsample
+library(rsample) # for dataset and splitting also loads broom and tidyr
+
+library(magrittr)
+require(ggplot2)
+require(CHAID)
+library(purrr)
+library(caret)
+# data(attrition)
+str(attrition)#dataset from rsample
+
+attrition %>%
+  select_if(is.factor) %>%
+  ncol
+
+attrition %>%
+  select_if(is.numeric) %>%
+  ncol
+# how many of them have a small number of values (a.k.a. levels) and can therefore be simply and easily converted to true factors.
+
+attrition %>%
+  select_if(function(col)
+    length(unique(col)) <= 5 & is.integer(col)) %>%
+  head
+
+attrition %>%
+  select_if(function(col)
+    length(unique(col)) <= 10 & is.integer(col)) %>%
+  head
+
+#2 and 4 respectively.  We can be pretty confident that converting these from integer to factor won’t lose much information.
+
+attrition %>%
+  mutate(
+    JobLevel = factor(JobLevel),
+    NumCompaniesWorked = factor(NumCompaniesWorked),
+    StockOptionLevel = factor(StockOptionLevel),
+    TrainingTimesLastYear = factor(TrainingTimesLastYear)
+  ) %>% 
+  str
+
+attrition <- attrition %>% 
+  mutate_if(function(col) length(unique(col)) <= 10 & is.integer(col), as.factor)
+
+# So for now, let’s simply ignore all the variables thatare still integers.
+
+newattrit <- attrition %>% 
+  select_if(is.factor)
+dim(newattrit)
+
+chaidattrit1 <- chaid(Attrition ~ ., data = newattrit)
+print(chaidattrit1)
+plot(chaidattrit1)
+chisq.test(newattrit$Attrition, newattrit$OverTime)
+plot(chaidattrit1, type = "simple")
+plot(
+  chaidattrit1,
+  main = "Testing Graphical Options",
+  gp = gpar(fontsize = 8),
+  type = "simple"
+)
+plot(
+  chaidattrit1,
+  main = "Testing More Graphical Options",
+  gp = gpar(
+    col = "blue",
+    lty = "solid",
+    lwd = 3,
+    fontsize = 10
+  )
+)
+
+cntr<-chaid_control()
+cntr
+pmodel1 <- predict(chaidattrit1)
+head(pmodel1)
+library(e1071)#for confusion matrix
+confusionMatrix(pmodel1, newattrit$Attrition)
+#One other thing I’ll mention in passing is that the partykit package  offers a way of assessing the relative importance of the variables in the model via the varimp command. 
+im<-sort(varimp(chaidattrit1), decreasing = TRUE)
+plot(im)
+
+#==================INTEGERS==========================
+
+
+# Turning numeric variables into factors
+## what do they look like
+attrition %>%
+  select_if(is.numeric) %>%
+  gather(metric, value) %>%
+  ggplot(aes(value, fill = metric)) +
+  geom_density(show.legend = FALSE) +
+  facet_wrap( ~ metric, scales = "free")
+
+table(cut(attrition$YearsWithCurrManager, breaks = 5))
+table(attrition$YearsSinceLastPromotion)
+table(cut(
+  attrition$YearsSinceLastPromotion,
+  breaks = c(-1, 0.9, 1.9, 2.9, 30),
+  labels = c("Less than 1", "1", "2", "More than 2")
+))
+# cut_interval makes n groups with equal range
+table(cut_interval(attrition$YearsWithCurrManager, n = 5))
+# cut_number makes n groups with (approximately) equal numbers of observations
+table(cut_number(attrition$YearsWithCurrManager, n = 5))
+# cut_width makes groups of width width
+table(cut_width(attrition$YearsWithCurrManager, width = 2))
+
+
+attrition$YearsSinceLastPromotion <- cut(
+  attrition$YearsSinceLastPromotion,
+  breaks = c(-1, 0.9, 1.9, 2.9, 30),
+  labels = c("Less than 1", "1", "2", "More than 2")
+)
+
+attrition <- attrition %>% 
+  mutate_if(is.numeric, funs(cut_number(., n=5)))
+summary(attrition)
+newattrit <- attrition %>% 
+  select_if(is.factor)
+dim(newattrit)
+chaidattrit5 <- chaid(Attrition ~ ., data = newattrit)
+ctrl <- chaid_control(maxheight = 3)
+chaidattrit7 <- chaid(Attrition ~ ., data = newattrit, control = ctrl)
+plot(
+  chaidattrit7,
+  main = "Default control sliced numerics",
+  gp = gpar(
+    col = "blue",
+    lty = "solid",
+    lwd = 3,
+    fontsize = 8
+  )
+)
+
+```
